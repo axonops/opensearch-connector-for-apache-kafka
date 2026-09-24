@@ -38,6 +38,7 @@ import org.opensearch.client.util.ByteArrayBinaryData;
 
 import io.aiven.kafka.connect.opensearch.BehaviorOnNullValues;
 import io.aiven.kafka.connect.opensearch.DocumentIDStrategy;
+import io.aiven.kafka.connect.opensearch.DocumentVersionSource;
 import io.aiven.kafka.connect.opensearch.IndexWriteMethod;
 import io.aiven.kafka.connect.opensearch.OpenSearchSinkConnectorConfig;
 
@@ -60,6 +61,8 @@ public class BulkOperationBuilderTest {
     private static final long OFFSET = 15;
 
     private static final String VALUE = "value";
+
+    private static final long TIMESTAMP = 1_790_000_000_000L;
 
     @Test
     public void noRequestWithDocumentIdStrategyNone() throws Exception {
@@ -135,6 +138,53 @@ public class BulkOperationBuilderTest {
         assertEquals(OFFSET, indexOperation.index().version());
         assertEquals("""
                 {"string":"value"}""", readPayload(((ByteArrayBinaryData) indexOperation.index().document())));
+    }
+
+    @Test
+    public void requestWithDocumentIdStrategyRecordKeyAndTimestampVersion() throws Exception {
+        final var config = new OpenSearchSinkConnectorConfig(Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG,
+                "http://localhost", OpenSearchSinkConnectorConfig.DOCUMENT_VERSION_SOURCE_CONFIG,
+                DocumentVersionSource.TIMESTAMP.toString(),
+                OpenSearchSinkConnectorConfig.BEHAVIOR_ON_NULL_VALUES_CONFIG, BehaviorOnNullValues.DELETE.name()));
+
+        final var bulkOperationBuilder = new BulkOperationBuilder(config);
+
+        final var deleteOperation = bulkOperationBuilder.buildFor("index", createSinkRecord(null, TIMESTAMP));
+        assertNotNull(deleteOperation);
+        assertTrue(deleteOperation.isDelete());
+        assertEquals(VersionType.External, deleteOperation.delete().versionType());
+        assertEquals(TIMESTAMP, deleteOperation.delete().version());
+
+        final var indexOperation = bulkOperationBuilder.buildFor("index", createSinkRecord(VALUE, TIMESTAMP));
+        assertNotNull(indexOperation);
+        assertTrue(indexOperation.isIndex());
+        assertEquals(KEY, indexOperation.index().id());
+        assertEquals(VersionType.External, indexOperation.index().versionType());
+        assertEquals(TIMESTAMP, indexOperation.index().version());
+    }
+
+    @Test
+    public void failOnMissingTimestampWithTimestampVersion() {
+        final var config = new OpenSearchSinkConnectorConfig(Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG,
+                "http://localhost", OpenSearchSinkConnectorConfig.DOCUMENT_VERSION_SOURCE_CONFIG,
+                DocumentVersionSource.TIMESTAMP.toString()));
+        final var bulkOperationBuilder = new BulkOperationBuilder(config);
+
+        assertThrows(DataException.class, () -> bulkOperationBuilder.buildFor("index", createSinkRecord(VALUE, false)));
+        assertThrows(DataException.class, () -> bulkOperationBuilder.buildFor("index", createSinkRecord(VALUE, -1L)));
+    }
+
+    @Test
+    public void timestampVersionIgnoredWithDocumentIdStrategyTopicPartitionOffset() throws Exception {
+        final var config = new OpenSearchSinkConnectorConfig(Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG,
+                "http://localhost", OpenSearchSinkConnectorConfig.KEY_IGNORE_CONFIG, "true",
+                OpenSearchSinkConnectorConfig.DOCUMENT_VERSION_SOURCE_CONFIG,
+                DocumentVersionSource.TIMESTAMP.toString()));
+
+        final var indexOperation = new BulkOperationBuilder(config).buildFor("index", createSinkRecord(VALUE, false));
+        assertNotNull(indexOperation);
+        assertEquals(VersionType.Internal, indexOperation.index().versionType());
+        assertNull(indexOperation.index().version());
     }
 
     @Test
@@ -262,6 +312,12 @@ public class BulkOperationBuilderTest {
                 ? new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, KEY, valueSchema, structValue, OFFSET,
                         System.currentTimeMillis(), TimestampType.CREATE_TIME)
                 : new SinkRecord(TOPIC, PARTITION, Schema.STRING_SCHEMA, KEY, valueSchema, structValue, OFFSET);
+    }
+
+    SinkRecord createSinkRecord(final String value, final long timestamp) {
+        final var record = createSinkRecord(value, false);
+        return record.newRecord(record.topic(), record.kafkaPartition(), record.keySchema(), record.key(),
+                record.valueSchema(), record.value(), timestamp);
     }
 
     String readPayload(final ByteArrayBinaryData source) throws IOException {

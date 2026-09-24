@@ -174,6 +174,16 @@ public class OpenSearchSinkConnectorConfig extends AbstractConfig {
             + "- ``report`` - report to errant record reporter and keep the existing record\n"
             + "- ``fail`` - fail the task.\n\n";
 
+    public static final String DOCUMENT_VERSION_SOURCE_CONFIG = "document.version.source";
+    private static final String DOCUMENT_VERSION_SOURCE_DOC = "The record attribute used as the OpenSearch "
+            + "external document version. Only applies when the document ID is the record key (``" + KEY_IGNORE_CONFIG
+            + "`` is ``false`` or ``" + KEY_IGNORE_ID_STRATEGY_CONFIG + "`` is ``record.key``) and data streams "
+            + "are not enabled. Available sources: " + DocumentVersionSource.describe() + ". "
+            + "Use ``timestamp`` when writes to the same document can come from more than one topic-partition, "
+            + "such as topics replicated by MirrorMaker, where offsets are not comparable. Records without a "
+            + "timestamp are rejected, and a record with the same timestamp as the stored document is treated as "
+            + "a version conflict. If not specified, the default is ``offset``.";
+
     public static final String INDEX_WRITE_METHOD = "index.write.method";
 
     public static final String INDEX_WRITE_METHOD_DOC = String.format(
@@ -375,6 +385,9 @@ public class OpenSearchSinkConnectorConfig extends AbstractConfig {
                         BehaviorOnVersionConflict.VALIDATOR, Importance.LOW, BEHAVIOR_ON_VERSION_CONFLICT_DOC,
                         DATA_CONVERSION_GROUP_NAME, ++order, Width.SHORT,
                         "Behavior on document's version conflict (optimistic locking)")
+                .define(DOCUMENT_VERSION_SOURCE_CONFIG, Type.STRING, DocumentVersionSource.OFFSET.toString(),
+                        DocumentVersionSource.VALIDATOR, Importance.LOW, DOCUMENT_VERSION_SOURCE_DOC,
+                        DATA_CONVERSION_GROUP_NAME, ++order, Width.SHORT, "Document version source")
                 .define(ROUTING_TYPE, Type.STRING, RoutingType.NONE.toString(), RoutingType.VALIDATOR, Importance.LOW,
                         ROUTING_TYPE_DOC, DATA_CONVERSION_GROUP_NAME, ++order, Width.LONG, "Routing type")
                 .define(ROUTING_RECORD_VALUE_PATH, Type.STRING, null, new ConfigDef.Validator() {
@@ -771,6 +784,10 @@ public class OpenSearchSinkConnectorConfig extends AbstractConfig {
 
     public boolean trustAllCertificates() {
         return getBoolean(SSL_CONFIG_PREFIX + SSL_CONFIG_TRUST_ALL_CERTIFICATES);
+    }
+
+    public DocumentVersionSource documentVersionSource() {
+        return DocumentVersionSource.fromString(getString(DOCUMENT_VERSION_SOURCE_CONFIG));
     }
 
     public RoutingType routingType() {

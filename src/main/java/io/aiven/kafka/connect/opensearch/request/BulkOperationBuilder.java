@@ -32,6 +32,7 @@ import org.opensearch.client.util.ContentType;
 
 import io.aiven.kafka.connect.opensearch.BehaviorOnNullValues;
 import io.aiven.kafka.connect.opensearch.DocumentIDStrategy;
+import io.aiven.kafka.connect.opensearch.DocumentVersionSource;
 import io.aiven.kafka.connect.opensearch.IndexWriteMethod;
 import io.aiven.kafka.connect.opensearch.OpenSearchSinkConnectorConfig;
 import io.aiven.kafka.connect.opensearch.OpenSearchTaskHandler;
@@ -128,11 +129,25 @@ public final class BulkOperationBuilder {
     private void addVersionIfAny(final BulkOperationBase.AbstractBuilder<?> operationBuilder,
             final DocumentIDStrategy documentIDStrategy, final SinkRecord record) {
         if (documentIDStrategy == DocumentIDStrategy.RECORD_KEY) {
-            operationBuilder.version(record.kafkaOffset());
+            operationBuilder.version(versionOf(record));
             operationBuilder.versionType(VersionType.External);
         } else {
             operationBuilder.versionType(VersionType.Internal);
         }
+    }
+
+    private long versionOf(final SinkRecord record) {
+        if (config.documentVersionSource() == DocumentVersionSource.TIMESTAMP) {
+            if (isNull(record.timestamp()) || record.timestamp() < 0) {
+                throw new DataException(String.format(
+                        "Sink record with key of %s has no valid timestamp (%s) for topic/partition/offset %s/%s/%s, "
+                                + "which is required when '%s' is '%s'",
+                        record.key(), record.timestamp(), record.topic(), record.kafkaPartition(), record.kafkaOffset(),
+                        OpenSearchSinkConnectorConfig.DOCUMENT_VERSION_SOURCE_CONFIG, DocumentVersionSource.TIMESTAMP));
+            }
+            return record.timestamp();
+        }
+        return record.kafkaOffset();
     }
 
     private String routingValue(final SinkRecord record, final byte[] payload) {

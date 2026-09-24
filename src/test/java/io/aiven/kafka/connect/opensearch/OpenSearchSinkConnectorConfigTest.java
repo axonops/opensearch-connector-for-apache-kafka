@@ -284,6 +284,29 @@ public class OpenSearchSinkConnectorConfigTest {
     }
 
     @Test
+    void testDefaultDocumentVersionSource() {
+        final var config = new OpenSearchSinkConnectorConfig(
+                Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG, "http://l:9200"));
+
+        assertEquals(DocumentVersionSource.OFFSET, config.documentVersionSource());
+    }
+
+    @Test
+    void testSetTimestampDocumentVersionSource() {
+        final var config = new OpenSearchSinkConnectorConfig(Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG,
+                "http://l:9200", OpenSearchSinkConnectorConfig.DOCUMENT_VERSION_SOURCE_CONFIG, "TIMESTAMP"));
+
+        assertEquals(DocumentVersionSource.TIMESTAMP, config.documentVersionSource());
+    }
+
+    @Test
+    void testThrowExceptionForWrongDocumentVersionSource() {
+        assertThrows(ConfigException.class,
+                () -> new OpenSearchSinkConnectorConfig(Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG,
+                        "http://l:9200", OpenSearchSinkConnectorConfig.DOCUMENT_VERSION_SOURCE_CONFIG, "partition")));
+    }
+
+    @Test
     void testDefaultRoutingSettings() {
         final var config = new OpenSearchSinkConnectorConfig(
                 Map.of(OpenSearchSinkConnectorConfig.CONNECTION_URL_CONFIG, "http://l:9200"));

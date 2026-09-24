@@ -360,6 +360,14 @@ Data Conversion
   * Valid Values: [ignore, warn, fail, report]
   * Importance: low
 
+``document.version.source``
+  The record attribute used as the OpenSearch external document version. Only applies when the document ID is the record key (``key.ignore`` is ``false`` or ``key.ignore.id.strategy`` is ``record.key``) and data streams are not enabled. Available sources: {offset : The record's Kafka offset, timestamp : The record's Kafka timestamp in milliseconds}. Use ``timestamp`` when writes to the same document can come from more than one topic-partition, such as topics replicated by MirrorMaker, where offsets are not comparable. Records without a timestamp are rejected, and a record with the same timestamp as the stored document is treated as a version conflict. If not specified, the default is ``offset``.
+
+  * Type: string
+  * Default: offset
+  * Valid Values: [offset, timestamp]
+  * Importance: low
+
 ``routing.type``
   Specifies the routing type which connector uses when sending documents to OpenSearch. Available types: {none : No routing is added, key : The routing value is determined by the record’s key, value : The routing value is determined by the record's value}. If not specified, the default is ``none``.
 
