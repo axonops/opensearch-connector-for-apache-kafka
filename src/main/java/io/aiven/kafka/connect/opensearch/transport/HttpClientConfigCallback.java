@@ -31,6 +31,7 @@ import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
+import org.apache.hc.client5.http.ssl.HostnameVerificationPolicy;
 import org.apache.hc.client5.http.ssl.HttpsSupport;
 import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 
@@ -55,15 +56,20 @@ public record HttpClientConfigCallback(SSLContext sslContext,
     }
 
     private PoolingAsyncClientConnectionManager createConnectionManager() {
+        final var tlsStrategyBuilder = ClientTlsStrategyBuilder.create()
+                .setSslContext(sslContext)
+                .setTlsVersions(config.sslEnableProtocols())
+                .setCiphers(config.cipherSuitesConfig());
+        if (config.disableHostnameVerification()) {
+            // CLIENT stops the JSSE provider from also verifying the hostname during the TLS handshake,
+            // which the default policy (BOTH) enables whenever a custom hostname verifier is set
+            tlsStrategyBuilder.setHostnameVerifier(NoopHostnameVerifier.INSTANCE)
+                    .setHostVerificationPolicy(HostnameVerificationPolicy.CLIENT);
+        } else {
+            tlsStrategyBuilder.setHostnameVerifier(HttpsSupport.getDefaultHostnameVerifier());
+        }
         return PoolingAsyncClientConnectionManagerBuilder.create()
-                .setTlsStrategy(ClientTlsStrategyBuilder.create()
-                        .setSslContext(sslContext)
-                        .setHostnameVerifier(config.disableHostnameVerification()
-                                ? NoopHostnameVerifier.INSTANCE
-                                : HttpsSupport.getDefaultHostnameVerifier())
-                        .setTlsVersions(config.sslEnableProtocols())
-                        .setCiphers(config.cipherSuitesConfig())
-                        .buildAsync())
+                .setTlsStrategy(tlsStrategyBuilder.buildAsync())
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
                         .setConnectTimeout(config.connectionTimeoutMs(), TimeUnit.MILLISECONDS)
                         .setSocketTimeout(config.readTimeoutMs(), TimeUnit.MILLISECONDS)
